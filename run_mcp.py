@@ -1,10 +1,12 @@
 """
 EmailAssistant MCP Server
 传输协议: stdio (默认) / SSE (--transport sse, 端口 8201)
+支持 Bearer Token 认证（SSE 模式下）
 """
 import argparse
 import os
 import json
+import secrets
 import httpx
 from mcp.server.fastmcp import FastMCP
 
@@ -14,6 +16,10 @@ API_URL = os.environ.get("EA_API_URL", "http://localhost:8200")
 SSE_HOST = os.environ.get("EA_SSE_HOST", "0.0.0.0")
 SSE_PORT = int(os.environ.get("EA_SSE_PORT", "8201"))
 HTTP_TIMEOUT = float(os.environ.get("EA_HTTP_TIMEOUT", "60"))
+
+# Bearer Token 认证（SSE 模式下生效）
+# 设置环境变量 EA_AUTH_TOKEN 或自动生成
+AUTH_TOKEN = os.environ.get("EA_AUTH_TOKEN", "")
 
 server = FastMCP(
     "email-assistant",
@@ -117,16 +123,69 @@ async def email_chat(message: str) -> str:
     except httpx.HTTPStatusError as e:
         return _error_text(f"API 错误 {e.response.status_code}: {e.response.text}")
 
+# ---------- Bearer Token 认证中间件 ----------
+
+class BearerAuthMiddleware:
+    """ASGI 中间件：验证 Authorization: Bearer <token>"""
+
+    def __init__(self, app, token: str):
+        self.app = app
+        self.token = token
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            # 从 headers 提取 Authorization
+            headers = dict(scope.get("headers", []))
+            auth = headers.get(b"authorization", b"").decode()
+
+            if not auth.startswith("Bearer ") or auth[7:] != self.token:
+                # 返回 401
+                await send({
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [
+                        [b"content-type", b"application/json"],
+                        [b"www-authenticate", b"Bearer"],
+                    ],
+                })
+                body = json.dumps({"error": "Invalid or missing Bearer token"}).encode()
+                await send({
+                    "type": "http.response.body",
+                    "body": body,
+                })
+                return
+
+        await self.app(scope, receive, send)
+
 # ---------- 启动 ----------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EmailAssistant MCP Server")
     parser.add_argument("--transport", default="stdio", choices=["stdio", "sse"])
     parser.add_argument("--port", type=int, default=SSE_PORT)
+    parser.add_argument("--token", default=AUTH_TOKEN, help="Bearer Token (留空则自动生成)")
     args = parser.parse_args()
 
     if args.transport == "sse":
+        # 确定 Token
+        token = args.token or secrets.token_urlsafe(32)
         server.settings.port = args.port
-        server.run(transport="sse")
+
+        print("=" * 60)
+        print("  EmailAssistant MCP Server (SSE)")
+        print(f"  端口: {args.port}")
+        print(f"  URL:  http://localhost:{args.port}/sse")
+        print(f"  Token: {token}")
+        print("=" * 60)
+        print("  其他用户连接时需要在 Header 中提供:")
+        print(f"  Authorization: Bearer {token}")
+        print("=" * 60)
+
+        # 获取 SSE 应用并包装认证中间件
+        app = server.sse_app()
+        auth_app = BearerAuthMiddleware(app, token)
+
+        import uvicorn
+        uvicorn.run(auth_app, host=SSE_HOST, port=args.port)
     else:
         server.run(transport="stdio")
