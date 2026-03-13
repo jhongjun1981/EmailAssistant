@@ -1,0 +1,28 @@
+services:
+  email-assistant:
+    build: .
+    container_name: email-assistant
+    ports:
+      - "8200:8200"
+    volumes:
+      - ./config.json:/app/config.json
+    environment:
+      - EA_API_URL=http://localhost:8200
+    restart: unless-stopped
+
+  # MCP SSE 模式（可选，用于 Web 客户端）
+  email-assistant-mcp:
+    build: .
+    container_name: email-assistant-mcp
+    command: python run_mcp.py --transport sse --port 8201
+    ports:
+      - "8201:8201"
+    volumes:
+      - ./config.json:/app/config.json
+    environment:
+      - EA_API_URL=http://email-assistant:8200
+    depends_on:
+      - email-assistant
+    restart: unless-stopped
+    profiles:
+      - mcp-sse

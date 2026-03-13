@@ -1,0 +1,9 @@
+__pycache__
+*.pyc
+venv
+.git
+.gitignore
+*.md
+install.bat
+start_all.bat
+START.bat
