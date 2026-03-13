@@ -40,6 +40,10 @@ DEFAULT_CONFIG = {
             "api_key": ""
         }
     },
+    "smtp": {
+        "email": "",
+        "password": ""
+    },
     "emailmarketer": {
         "api_url": "http://localhost:8100",
         "api_key": "em-secret-2026"

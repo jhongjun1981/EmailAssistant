@@ -38,12 +38,7 @@ def _get_config():
 def _get_email_client():
     global _email_client
     if _email_client is None:
-        cfg = _get_config()
-        em = cfg.get("emailmarketer", {})
-        _email_client = EmailClient(
-            api_url=em.get("api_url", "http://localhost:8100"),
-            api_key=em.get("api_key", "")
-        )
+        _email_client = EmailClient(_get_config())
     return _email_client
 
 # ---------- 接口 ----------
