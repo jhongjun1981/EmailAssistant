@@ -12,7 +12,22 @@ import signal
 
 # ---------- 配置 ----------
 SSE_PORT = int(os.environ.get("EA_SSE_PORT", "8201"))
-AUTH_TOKEN = os.environ.get("EA_AUTH_TOKEN", "") or secrets.token_urlsafe(32)
+
+# Token 优先级: 环境变量 > config.json > 随机生成
+def _load_token():
+    env_token = os.environ.get("EA_AUTH_TOKEN", "")
+    if env_token:
+        return env_token
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        token = cfg.get("mcp_auth_token", "")
+        if token:
+            return token
+    return secrets.token_urlsafe(32)
+
+AUTH_TOKEN = _load_token()
 
 
 def start_ngrok(port: int) -> str:
@@ -20,20 +35,24 @@ def start_ngrok(port: int) -> str:
     try:
         from pyngrok import ngrok, conf
 
-        # 检查是否配置了 authtoken
-        config = conf.get_default()
-        if not config.auth_token:
+        # 从 config.json 读取 ngrok authtoken
+        config_path = os.path.join(os.path.dirname(__file__), "config.json")
+        ngrok_token = ""
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            ngrok_token = cfg.get("ngrok_authtoken", "")
+
+        pyngrok_conf = conf.get_default()
+        if not pyngrok_conf.auth_token and ngrok_token:
+            ngrok.set_auth_token(ngrok_token)
+            print(f"  ngrok authtoken 已从 config.json 加载")
+        elif not pyngrok_conf.auth_token:
             print("\n" + "=" * 60)
-            print("  首次使用需要配置 ngrok authtoken")
-            print("  1. 去 https://dashboard.ngrok.com/signup 注册（免费）")
-            print("  2. 复制你的 authtoken")
+            print("  [错误] 未配置 ngrok authtoken")
+            print("  请在 config.json 中添加 \"ngrok_authtoken\": \"你的token\"")
             print("=" * 60)
-            token = input("  请粘贴你的 ngrok authtoken: ").strip()
-            if not token:
-                print("  [错误] authtoken 不能为空")
-                sys.exit(1)
-            ngrok.set_auth_token(token)
-            print("  authtoken 已保存！\n")
+            sys.exit(1)
 
         # 启动隧道
         tunnel = ngrok.connect(port, "http")

@@ -125,8 +125,23 @@ async def email_chat(message: str) -> str:
 
 # ---------- Bearer Token 认证中间件 ----------
 
+SERVER_CARD = {
+    "name": "email-assistant",
+    "description": "AI Email Assistant - Send emails with natural language via MCP",
+    "tools": [
+        {"name": "smart_email", "description": "Send email using natural language"},
+        {"name": "parse_email_intent", "description": "Parse email intent from natural language (no send)"},
+        {"name": "send_email", "description": "Send email with explicit parameters"},
+        {"name": "email_chat", "description": "Chat with email assistant"},
+    ],
+}
+
+
 class BearerAuthMiddleware:
     """ASGI 中间件：验证 Authorization: Bearer <token>"""
+
+    # 不需要认证的路径
+    PUBLIC_PATHS = {"/.well-known/mcp/server-card.json"}
 
     def __init__(self, app, token: str):
         self.app = app
@@ -134,12 +149,37 @@ class BearerAuthMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            # 从 headers 提取 Authorization
+            path = scope.get("path", "")
+
+            # 公开端点：server-card.json
+            if path == "/.well-known/mcp/server-card.json":
+                body = json.dumps(SERVER_CARD, ensure_ascii=False).encode()
+                await send({
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        [b"content-type", b"application/json"],
+                    ],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": body,
+                })
+                return
+
+            # 需要认证的端点
+            # 1. 优先从 HTTP Header 读取
             headers = dict(scope.get("headers", []))
             auth = headers.get(b"authorization", b"").decode()
 
+            # 2. 回退：从 URL 查询参数读取 (?authorization=Bearer%20xxx)
+            if not auth:
+                from urllib.parse import parse_qs
+                qs = scope.get("query_string", b"").decode()
+                params = parse_qs(qs)
+                auth = params.get("authorization", [""])[0]
+
             if not auth.startswith("Bearer ") or auth[7:] != self.token:
-                # 返回 401
                 await send({
                     "type": "http.response.start",
                     "status": 401,
