@@ -140,9 +140,6 @@ SERVER_CARD = {
 class BearerAuthMiddleware:
     """ASGI 中间件：验证 Authorization: Bearer <token>"""
 
-    # 不需要认证的路径
-    PUBLIC_PATHS = {"/.well-known/mcp/server-card.json"}
-
     def __init__(self, app, token: str):
         self.app = app
         self.token = token
@@ -151,7 +148,9 @@ class BearerAuthMiddleware:
         if scope["type"] == "http":
             path = scope.get("path", "")
 
-            # 公开端点：server-card.json
+            # 公开端点：无需认证
+            # - server-card.json: 工具发现
+            # - /messages/: 已通过 session_id 认证（只有认证过的 SSE 连接才能获取 session_id）
             if path == "/.well-known/mcp/server-card.json":
                 body = json.dumps(SERVER_CARD, ensure_ascii=False).encode()
                 await send({
@@ -167,7 +166,12 @@ class BearerAuthMiddleware:
                 })
                 return
 
-            # 需要认证的端点
+            # /messages/ 端点：session_id 本身就是认证凭证
+            if path.startswith("/messages"):
+                await self.app(scope, receive, send)
+                return
+
+            # 需要认证的端点（/sse 等）
             headers = dict(scope.get("headers", []))
             token_value = ""
 
