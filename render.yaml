@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: emailassistant-mcp
+    runtime: docker
+    plan: free
+    envVars:
+      - key: EA_SMTP_EMAIL
+        sync: false
+      - key: EA_SMTP_PASSWORD
+        sync: false
+      - key: EA_LLM_API_KEY
+        sync: false
+      - key: EA_AUTH_TOKEN
+        sync: false
+      - key: EA_LLM_MODEL
+        value: zhipu
