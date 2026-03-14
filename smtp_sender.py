@@ -29,7 +29,7 @@ def _send_via_resend(
             "from": from_email,
             "to": [to_email],
             "subject": subject,
-            "text": body or "",
+            "text": body if body else "(no content)",
         }
         result = resend.Emails.send(params)
         return {"success": True, "message": f"邮件发送成功（Resend）！→ {to_email}，ID: {result.get('id', 'N/A')}"}
