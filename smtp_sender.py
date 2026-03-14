@@ -1,7 +1,7 @@
 """
-内置邮件发送模块 — 支持 SMTP 和 Resend API 两种方式
+内置邮件发送模块 — 支持 SMTP 和 Brevo API 两种方式
 - 本地：走 SMTP（QQ邮箱等）
-- 云端（Render等）：走 Resend API（HTTPS，不受端口限制）
+- 云端（Render等）：走 Brevo API（HTTPS，不受端口限制）
 """
 import smtplib
 import os
@@ -11,30 +11,37 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 
-# ---------- Resend API 发送 ----------
+# ---------- Brevo API 发送 ----------
 
-def _send_via_resend(
+def _send_via_brevo(
     api_key: str,
     from_email: str,
+    from_name: str,
     to_email: str,
     subject: str,
     body: str = "",
 ) -> dict:
-    """通过 Resend API 发送邮件（HTTPS，不受 SMTP 端口限制）"""
+    """通过 Brevo API 发送邮件（HTTPS，不受 SMTP 端口限制）"""
     try:
-        import resend
-        resend.api_key = api_key
-
-        params = {
-            "from": from_email,
-            "to": [to_email],
-            "subject": subject,
-            "text": body if body else "(no content)",
-        }
-        result = resend.Emails.send(params)
-        return {"success": True, "message": f"邮件发送成功（Resend）！→ {to_email}，ID: {result.get('id', 'N/A')}"}
+        import httpx
+        resp = httpx.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": api_key, "Content-Type": "application/json"},
+            json={
+                "sender": {"name": from_name, "email": from_email},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "textContent": body if body else "(no content)",
+            },
+            timeout=30,
+        )
+        if resp.status_code in (200, 201):
+            msg_id = resp.json().get("messageId", "N/A")
+            return {"success": True, "message": f"邮件发送成功（Brevo）！→ {to_email}，ID: {msg_id}"}
+        else:
+            return {"success": False, "message": f"Brevo 发送失败 [{resp.status_code}]: {resp.text}"}
     except Exception as e:
-        return {"success": False, "message": f"Resend 发送失败: {str(e)}"}
+        return {"success": False, "message": f"Brevo 发送失败: {str(e)}"}
 
 
 # ---------- 常见邮箱的 SMTP 配置 ----------
@@ -78,11 +85,12 @@ def send_email(
         "ssl": true              # 可选，自动推断
     }
     """
-    # 优先使用 Resend API（云端部署时 SMTP 端口可能被封）
-    resend_key = os.environ.get("EA_RESEND_API_KEY", "")
-    if resend_key:
-        from_email = os.environ.get("EA_RESEND_FROM", "EmailAssistant <onboarding@resend.dev>")
-        return _send_via_resend(resend_key, from_email, to_email, subject, body)
+    # 优先使用 Brevo API（云端部署时 SMTP 端口可能被封）
+    brevo_key = os.environ.get("EA_BREVO_API_KEY", "")
+    if brevo_key:
+        from_email = os.environ.get("EA_BREVO_FROM_EMAIL", "jhongjun1981@gmail.com")
+        from_name = os.environ.get("EA_BREVO_FROM_NAME", "EmailAssistant")
+        return _send_via_brevo(brevo_key, from_email, from_name, to_email, subject, body)
 
     sender = smtp_config.get("email", "")
     password = smtp_config.get("password", "")
