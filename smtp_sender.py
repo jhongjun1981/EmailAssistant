@@ -1,5 +1,7 @@
 """
-内置 SMTP 邮件发送模块 — 不依赖 EmailMarketer
+内置邮件发送模块 — 支持 SMTP 和 Resend API 两种方式
+- 本地：走 SMTP（QQ邮箱等）
+- 云端（Render等）：走 Resend API（HTTPS，不受端口限制）
 """
 import smtplib
 import os
@@ -9,7 +11,33 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 
-# 常见邮箱的 SMTP 配置
+# ---------- Resend API 发送 ----------
+
+def _send_via_resend(
+    api_key: str,
+    from_email: str,
+    to_email: str,
+    subject: str,
+    body: str = "",
+) -> dict:
+    """通过 Resend API 发送邮件（HTTPS，不受 SMTP 端口限制）"""
+    try:
+        import resend
+        resend.api_key = api_key
+
+        params = {
+            "from": from_email,
+            "to": [to_email],
+            "subject": subject,
+            "text": body or "",
+        }
+        result = resend.Emails.send(params)
+        return {"success": True, "message": f"邮件发送成功（Resend）！→ {to_email}，ID: {result.get('id', 'N/A')}"}
+    except Exception as e:
+        return {"success": False, "message": f"Resend 发送失败: {str(e)}"}
+
+
+# ---------- 常见邮箱的 SMTP 配置 ----------
 SMTP_PRESETS = {
     "qq.com": {"host": "smtp.qq.com", "port": 465, "ssl": True},
     "foxmail.com": {"host": "smtp.qq.com", "port": 465, "ssl": True},
@@ -50,6 +78,12 @@ def send_email(
         "ssl": true              # 可选，自动推断
     }
     """
+    # 优先使用 Resend API（云端部署时 SMTP 端口可能被封）
+    resend_key = os.environ.get("EA_RESEND_API_KEY", "")
+    if resend_key:
+        from_email = os.environ.get("EA_RESEND_FROM", "EmailAssistant <onboarding@resend.dev>")
+        return _send_via_resend(resend_key, from_email, to_email, subject, body)
+
     sender = smtp_config.get("email", "")
     password = smtp_config.get("password", "")
 
