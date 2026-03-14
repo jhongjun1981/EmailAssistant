@@ -126,13 +126,55 @@ async def email_chat(message: str) -> str:
 # ---------- Bearer Token 认证中间件 ----------
 
 SERVER_CARD = {
-    "name": "email-assistant",
-    "description": "AI Email Assistant - Send emails with natural language via MCP",
+    "serverInfo": {
+        "name": "email-assistant",
+        "version": "1.0.0",
+    },
+    "capabilities": {
+        "tools": {},
+    },
     "tools": [
-        {"name": "smart_email", "description": "Send email using natural language"},
-        {"name": "parse_email_intent", "description": "Parse email intent from natural language (no send)"},
-        {"name": "send_email", "description": "Send email with explicit parameters"},
-        {"name": "email_chat", "description": "Chat with email assistant"},
+        {
+            "name": "smart_email",
+            "description": "Send email using natural language. Example: 'Send a meeting notice to test@qq.com'",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"message": {"type": "string", "description": "Natural language email instruction"}},
+                "required": ["message"],
+            },
+        },
+        {
+            "name": "parse_email_intent",
+            "description": "Parse email intent from natural language without sending",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"message": {"type": "string", "description": "Natural language to parse"}},
+                "required": ["message"],
+            },
+        },
+        {
+            "name": "send_email",
+            "description": "Send email with explicit parameters",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "to_email": {"type": "string", "description": "Recipient email"},
+                    "subject": {"type": "string", "description": "Email subject"},
+                    "body": {"type": "string", "description": "Email body"},
+                    "attachment_path": {"type": "string", "description": "Attachment path (optional)"},
+                },
+                "required": ["to_email", "subject"],
+            },
+        },
+        {
+            "name": "email_chat",
+            "description": "Chat with email assistant",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"message": {"type": "string", "description": "Chat message"}},
+                "required": ["message"],
+            },
+        },
     ],
 }
 
