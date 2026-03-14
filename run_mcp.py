@@ -168,18 +168,30 @@ class BearerAuthMiddleware:
                 return
 
             # 需要认证的端点
-            # 1. 优先从 HTTP Header 读取
             headers = dict(scope.get("headers", []))
-            auth = headers.get(b"authorization", b"").decode()
+            token_value = ""
 
-            # 2. 回退：从 URL 查询参数读取 (?authorization=Bearer%20xxx)
-            if not auth:
+            # 1. Authorization: Bearer xxx
+            auth = headers.get(b"authorization", b"").decode()
+            if auth.startswith("Bearer "):
+                token_value = auth[7:]
+
+            # 2. token 头（Smithery Connect 方式）
+            if not token_value:
+                token_value = headers.get(b"token", b"").decode()
+
+            # 3. URL 查询参数 (?token=xxx 或 ?authorization=Bearer%20xxx)
+            if not token_value:
                 from urllib.parse import parse_qs
                 qs = scope.get("query_string", b"").decode()
                 params = parse_qs(qs)
-                auth = params.get("authorization", [""])[0]
+                token_value = params.get("token", [""])[0]
+                if not token_value:
+                    auth_qs = params.get("authorization", [""])[0]
+                    if auth_qs.startswith("Bearer "):
+                        token_value = auth_qs[7:]
 
-            if not auth.startswith("Bearer ") or auth[7:] != self.token:
+            if token_value != self.token:
                 await send({
                     "type": "http.response.start",
                     "status": 401,
