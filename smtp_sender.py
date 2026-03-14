@@ -31,7 +31,7 @@ def _send_via_brevo(
                 "sender": {"name": from_name, "email": from_email},
                 "to": [{"email": to_email}],
                 "subject": subject,
-                "textContent": body if body else " ",
+                "textContent": str(body) if body else "(no content)",
             },
             timeout=30,
         )
